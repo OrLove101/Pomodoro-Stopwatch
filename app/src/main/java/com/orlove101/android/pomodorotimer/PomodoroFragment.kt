@@ -1,19 +1,23 @@
 package com.orlove101.android.pomodorotimer
 
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.orlove101.android.pomodorotimer.databinding.PomodoroFragmentBinding
+import kotlinx.coroutines.cancel
 
 class PomodoroFragment: Fragment(), StopwatchListener {
     private var _binding: PomodoroFragmentBinding? = null
     private val binding get() = _binding!!
 
-    private val stopwatchAdapter = StopwatchAdapter(this)
+    private val stopwatchAdapter = StopwatchAdapter(this, lifecycleScope)
     private val stopwatches = mutableListOf<Stopwatch>()
     private var nextId = 0
 
@@ -33,22 +37,26 @@ class PomodoroFragment: Fragment(), StopwatchListener {
             adapter = stopwatchAdapter
         }
 
+
         binding.addNewStopwatchButton.setOnClickListener {
-            stopwatches.add(Stopwatch(nextId++, 0, false))
-            stopwatchAdapter.submitList(stopwatches.toList())
+            val minutes = binding.editTextMinutes.text.toString().toLong()
+            val milliseconds = minutes * 60000L
+
+            if ( minutes > 0 ) {
+                stopwatches.add(Stopwatch(nextId++, milliseconds, false, 0L))
+                stopwatchAdapter.submitList(stopwatches.toList())
+            }
         }
     }
 
     override fun start(id: Int) {
-        changeStopwatch(id, null, true)
+        stopwatches.forEach { it.isStarted = false }
+        stopwatchAdapter.notifyDataSetChanged()
+        changeStopwatch(id, null, true, null)
     }
 
-    override fun stop(id: Int, currentMs: Long) {
-        changeStopwatch(id, currentMs, false)
-    }
-
-    override fun reset(id: Int) {
-        changeStopwatch(id, 0L, false)
+    override fun stop(id: Int, currentMs: Long, currentViewState: Long) {
+        changeStopwatch(id, currentMs, false, currentViewState)
     }
 
     override fun delete(id: Int) {
@@ -56,11 +64,16 @@ class PomodoroFragment: Fragment(), StopwatchListener {
         stopwatchAdapter.submitList(stopwatches.toList())
     }
 
-    private fun changeStopwatch(id: Int, currentMs: Long?, isStarted: Boolean) {
+    private fun changeStopwatch(id: Int, currentMs: Long?, isStarted: Boolean, currentViewState: Long?) {
         val newTimers = mutableListOf<Stopwatch>()
         stopwatches.forEach {
             if ( it.id == id ) {
-                newTimers.add(Stopwatch(it.id, currentMs ?: it.currentMs, isStarted)) //just change not create
+                newTimers.add(Stopwatch(
+                    it.id,
+                    currentMs ?: it.currentMs,
+                    isStarted,
+                    currentViewState ?: it.currentViewState)
+                ) //just change not create
             } else {
                 newTimers.add(it)
             }

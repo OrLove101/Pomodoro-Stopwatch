@@ -1,20 +1,24 @@
 package com.orlove101.android.pomodorotimer
 
+import android.content.res.ColorStateList
 import android.content.res.Resources
+import android.graphics.Color
 import android.graphics.drawable.AnimationDrawable
 import android.os.CountDownTimer
-import android.text.Layout
 import android.view.LayoutInflater
 import android.view.ViewGroup
-import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.isInvisible
+import androidx.lifecycle.LifecycleCoroutineScope
+import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.orlove101.android.pomodorotimer.databinding.StopwatchItemBinding
+import kotlinx.coroutines.*
 
 class StopwatchAdapter(
-    private val listener: StopwatchListener
+    private val listener: StopwatchListener,
+    private val lifecycleScope: LifecycleCoroutineScope
 ): ListAdapter<Stopwatch, StopwatchAdapter.StopwatchViewHolder>(itemComparator) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): StopwatchViewHolder {
@@ -33,7 +37,12 @@ class StopwatchAdapter(
         private val resources: Resources
     ): RecyclerView.ViewHolder(binding.root) {
 
-        private var timer: CountDownTimer? = null
+//        private var timer: CountDownTimer? = null
+
+        private var startTime = 0L
+        private var timerValue = 0L
+        private var timerActive = true
+        private var job: Job? = null
 
         fun bind(stopwatch: Stopwatch) {
             binding.stopwatchTimer.text = stopwatch.currentMs.displayTime()
@@ -50,13 +59,11 @@ class StopwatchAdapter(
         private fun initButtonsListeners(stopwatch: Stopwatch) {
             binding.startPauseButton.setOnClickListener {
                 if ( stopwatch.isStarted ) {
-                    listener.stop(stopwatch.id, stopwatch.currentMs)
+                    listener.stop(stopwatch.id, stopwatch.currentMs, stopwatch.currentViewState)
                 } else {
                     listener.start(stopwatch.id)
                 }
             }
-
-            binding.restartButton.setOnClickListener { listener.reset(stopwatch.id) }
 
             binding.deleteButton.setOnClickListener { listener.delete(stopwatch.id) }
         }
@@ -65,9 +72,30 @@ class StopwatchAdapter(
             val drawable = resources.getDrawable(R.drawable.ic_baseline_pause_24)
             binding.startPauseButton.setImageDrawable(drawable)
 
-            timer?.cancel()
-            timer = getCountDownTimer(stopwatch)
-            timer?.start()
+            timerActive = true
+            // when element is out of screen timer stopped
+
+            // when another element picked other coroutines continue their work
+
+            job = lifecycleScope.launch(Dispatchers.Main) {
+                startTime = System.currentTimeMillis()
+                timerValue = stopwatch.currentMs
+
+                while (timerActive || binding.stopwatchTimer.text != START_TIME) {
+                    var nowTime = System.currentTimeMillis()
+                    var validTime = timerValue - (nowTime - startTime)
+
+                    stopwatch.currentMs = validTime
+                    binding.stopwatchTimer.text = stopwatch.currentMs.displayTime()
+                    delay(UNIT_TEN_MS)
+                }
+            }
+
+//            timer?.cancel()
+//            timer = getCountDownTimer(stopwatch)
+//            timer?.start()
+
+            binding.progressView.setPeriod(stopwatch.currentMs)
 
             binding.blinkingIndicator.isInvisible = false
             (binding.blinkingIndicator.background as? AnimationDrawable)?.start()
@@ -77,65 +105,54 @@ class StopwatchAdapter(
             val drawable = resources.getDrawable(R.drawable.ic_baseline_play_arrow_24)
             binding.startPauseButton.setImageDrawable(drawable)
 
-            timer?.cancel()
+            timerActive = false
+
+            job?.cancel()
+
+//            timer?.cancel()
+
+            binding.progressView.setPeriod(stopwatch.currentMs)
+            binding.progressView.setCurrent(stopwatch.currentViewState)
 
             binding.blinkingIndicator.isInvisible = true
             (binding.blinkingIndicator.background as? AnimationDrawable)?.stop()
         }
 
-        private fun getCountDownTimer(stopwatch: Stopwatch): CountDownTimer {
-            return object : CountDownTimer(PERIOD, UNIT_TEN_MS) {
-                val interval = UNIT_TEN_MS
-
-                override fun onTick(millisUntilFinished: Long) {
-                    stopwatch.currentMs += interval
-                    binding.stopwatchTimer.text = stopwatch.currentMs.displayTime()
-                }
-
-                override fun onFinish() {
-                    binding.stopwatchTimer.text = stopwatch.currentMs.displayTime()
-                }
-            }
-        }
-
-        private fun Long.displayTime(): String {
-            if ( this <= 0L ) {
-                return START_TIME
-            }
-            val h = this / 1000 / 3600
-            val m = this / 1000 % 3600 / 60
-            val s = this / 1000 % 60
-            val ms = this % 1000 / 10
-
-            return "${displaySlot(h)}:${displaySlot(m)}:${displaySlot(s)}:${displaySlot(ms)}"
-        }
-
-        private fun displaySlot(count: Long): String {
-            return if ( count / 10L > 0 ) {
-                "$count"
-            } else {
-                "0$count"
-            }
-        }
+//        private fun getCountDownTimer(stopwatch: Stopwatch): CountDownTimer {
+//            return object : CountDownTimer(stopwatch.currentMs, UNIT_TEN_S) {
+//                val interval = UNIT_TEN_S
+//
+//                override fun onTick(millisUntilFinished: Long) {
+//                    stopwatch.currentMs -= interval
+//                    stopwatch.currentViewState += UNIT_TEN_S
+//                    binding.stopwatchTimer.text = stopwatch.currentMs.displayTime()
+//                    binding.progressView.setCurrent(stopwatch.currentViewState)
+//                }
+//
+//                override fun onFinish() {
+//                    binding.stopwatchTimer.text = stopwatch.currentMs.displayTime()
+//                    binding.blinkingIndicator.isInvisible = true
+//                    (binding.blinkingIndicator.background as? AnimationDrawable)?.stop()
+//                    binding.root.setCardBackgroundColor(Color.RED)
+//                }
+//            }
+//        }
     }
 
     private companion object {
         private val itemComparator = object : DiffUtil.ItemCallback<Stopwatch>() {
 
             override fun areItemsTheSame(oldItem: Stopwatch, newItem: Stopwatch): Boolean {
-                return oldItem.id == newItem.id
+                return oldItem.id == newItem.id && oldItem === newItem
             }
 
             override fun areContentsTheSame(oldItem: Stopwatch, newItem: Stopwatch): Boolean {
                 return oldItem.currentMs == newItem.currentMs &&
-                        oldItem.isStarted == newItem.isStarted
+                        oldItem.isStarted == newItem.isStarted &&
+                        oldItem.currentViewState == newItem.currentViewState
             }
 
             override fun getChangePayload(oldItem: Stopwatch, newItem: Stopwatch) = Any()
         }
-
-        private const val START_TIME = "00:00:00:00"
-        private const val UNIT_TEN_MS = 10L
-        private const val PERIOD = 1000L * 60L * 60L * 24L // Day
     }
 }
