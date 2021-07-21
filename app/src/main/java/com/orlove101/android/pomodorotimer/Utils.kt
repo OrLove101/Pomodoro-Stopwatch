@@ -3,6 +3,11 @@ package com.orlove101.android.pomodorotimer
 const val START_TIME = "00:00:00"
 const val UNIT_TEN_S = 1000L
 const val UNIT_TEN_MS = 10L
+const val INVALID = "INVALID"
+const val COMMAND_START = "COMMAND_START"
+const val COMMAND_STOP = "COMMAND_STOP"
+const val COMMAND_ID = "COMMAND_ID"
+const val STARTED_TIMER_TIME_MS = "STARTED_TIMER_TIME"
 
 fun Long.displayTime(): String {
     if ( this <= 0L ) {

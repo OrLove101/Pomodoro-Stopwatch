@@ -1,5 +1,6 @@
 package com.orlove101.android.pomodorotimer
 
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.content.res.Resources
 import android.graphics.Color
@@ -8,8 +9,8 @@ import android.os.CountDownTimer
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.view.isInvisible
-import androidx.lifecycle.LifecycleCoroutineScope
-import androidx.lifecycle.LifecycleOwner
+import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.*
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -18,7 +19,7 @@ import kotlinx.coroutines.*
 
 class StopwatchAdapter(
     private val listener: StopwatchListener,
-    private val lifecycleScope: LifecycleCoroutineScope
+    private val activity: FragmentActivity
 ): ListAdapter<Stopwatch, StopwatchAdapter.StopwatchViewHolder>(itemComparator) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): StopwatchViewHolder {
@@ -37,12 +38,15 @@ class StopwatchAdapter(
         private val resources: Resources
     ): RecyclerView.ViewHolder(binding.root) {
 
-//        private var timer: CountDownTimer? = null
-
         private var startTime = 0L
         private var timerValue = 0L
+        private var progressValue = 0L
         private var timerActive = true
         private var job: Job? = null
+
+        init {
+            ProcessLifecycleOwner.get().lifecycle.addObserver(activity as LifecycleObserver)
+        }
 
         fun bind(stopwatch: Stopwatch) {
             binding.stopwatchTimer.text = stopwatch.currentMs.displayTime()
@@ -73,29 +77,30 @@ class StopwatchAdapter(
             binding.startPauseButton.setImageDrawable(drawable)
 
             timerActive = true
-            // when element is out of screen timer stopped
 
+            // when element is out of screen timer stopped
             // when another element picked other coroutines continue their work
 
-            job = lifecycleScope.launch(Dispatchers.Main) {
+            job = activity.lifecycleScope.launch(Dispatchers.Main) {
                 startTime = System.currentTimeMillis()
                 timerValue = stopwatch.currentMs
+                progressValue = stopwatch.currentViewState
+                binding.progressView.setPeriod(stopwatch.currentMs)
 
-                while (timerActive || binding.stopwatchTimer.text != START_TIME) {
+                while (timerActive && binding.stopwatchTimer.text != START_TIME) {
                     var nowTime = System.currentTimeMillis()
                     var validTime = timerValue - (nowTime - startTime)
+                    var validProgress = progressValue + (nowTime - startTime)
 
+                    stopwatch.currentViewState = validProgress
                     stopwatch.currentMs = validTime
+                    binding.progressView.setCurrent(stopwatch.currentViewState)
+
                     binding.stopwatchTimer.text = stopwatch.currentMs.displayTime()
                     delay(UNIT_TEN_MS)
                 }
+                // add last iteration to display hole progress view and change background colour of root view
             }
-
-//            timer?.cancel()
-//            timer = getCountDownTimer(stopwatch)
-//            timer?.start()
-
-            binding.progressView.setPeriod(stopwatch.currentMs)
 
             binding.blinkingIndicator.isInvisible = false
             (binding.blinkingIndicator.background as? AnimationDrawable)?.start()
@@ -109,14 +114,33 @@ class StopwatchAdapter(
 
             job?.cancel()
 
-//            timer?.cancel()
-
             binding.progressView.setPeriod(stopwatch.currentMs)
             binding.progressView.setCurrent(stopwatch.currentViewState)
 
             binding.blinkingIndicator.isInvisible = true
             (binding.blinkingIndicator.background as? AnimationDrawable)?.stop()
         }
+    }
+
+    private companion object {
+        private val itemComparator = object : DiffUtil.ItemCallback<Stopwatch>() {
+
+            override fun areItemsTheSame(oldItem: Stopwatch, newItem: Stopwatch): Boolean {
+                return oldItem.id == newItem.id && oldItem === newItem
+            }
+
+            override fun areContentsTheSame(oldItem: Stopwatch, newItem: Stopwatch): Boolean {
+                return oldItem.currentMs == newItem.currentMs &&
+                        oldItem.isStarted == newItem.isStarted &&
+                        oldItem.currentViewState == newItem.currentViewState
+            }
+
+            override fun getChangePayload(oldItem: Stopwatch, newItem: Stopwatch) = Any()
+        }
+    }
+}
+
+
 
 //        private fun getCountDownTimer(stopwatch: Stopwatch): CountDownTimer {
 //            return object : CountDownTimer(stopwatch.currentMs, UNIT_TEN_S) {
@@ -137,22 +161,3 @@ class StopwatchAdapter(
 //                }
 //            }
 //        }
-    }
-
-    private companion object {
-        private val itemComparator = object : DiffUtil.ItemCallback<Stopwatch>() {
-
-            override fun areItemsTheSame(oldItem: Stopwatch, newItem: Stopwatch): Boolean {
-                return oldItem.id == newItem.id && oldItem === newItem
-            }
-
-            override fun areContentsTheSame(oldItem: Stopwatch, newItem: Stopwatch): Boolean {
-                return oldItem.currentMs == newItem.currentMs &&
-                        oldItem.isStarted == newItem.isStarted &&
-                        oldItem.currentViewState == newItem.currentViewState
-            }
-
-            override fun getChangePayload(oldItem: Stopwatch, newItem: Stopwatch) = Any()
-        }
-    }
-}

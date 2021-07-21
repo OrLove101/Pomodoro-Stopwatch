@@ -1,5 +1,6 @@
 package com.orlove101.android.pomodorotimer
 
+import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -8,16 +9,16 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.*
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.orlove101.android.pomodorotimer.databinding.PomodoroFragmentBinding
 import kotlinx.coroutines.cancel
 
-class PomodoroFragment: Fragment(), StopwatchListener {
+class PomodoroFragment: Fragment(), StopwatchListener, LifecycleObserver {
     private var _binding: PomodoroFragmentBinding? = null
     private val binding get() = _binding!!
 
-    private val stopwatchAdapter = StopwatchAdapter(this, lifecycleScope)
+    private val stopwatchAdapter = this.activity?.let { StopwatchAdapter(this, it) }
     private val stopwatches = mutableListOf<Stopwatch>()
     private var nextId = 0
 
@@ -32,11 +33,11 @@ class PomodoroFragment: Fragment(), StopwatchListener {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
         binding.recycler.apply {
             layoutManager = LinearLayoutManager(context)
             adapter = stopwatchAdapter
         }
-
 
         binding.addNewStopwatchButton.setOnClickListener {
             val minutes = binding.editTextMinutes.text.toString().toLong()
@@ -44,14 +45,14 @@ class PomodoroFragment: Fragment(), StopwatchListener {
 
             if ( minutes > 0 ) {
                 stopwatches.add(Stopwatch(nextId++, milliseconds, false, 0L))
-                stopwatchAdapter.submitList(stopwatches.toList())
+                stopwatchAdapter?.submitList(stopwatches.toList())
             }
         }
     }
 
     override fun start(id: Int) {
         stopwatches.forEach { it.isStarted = false }
-        stopwatchAdapter.notifyDataSetChanged()
+        stopwatchAdapter?.notifyDataSetChanged()
         changeStopwatch(id, null, true, null)
     }
 
@@ -61,7 +62,7 @@ class PomodoroFragment: Fragment(), StopwatchListener {
 
     override fun delete(id: Int) {
         stopwatches.remove(stopwatches.find { it.id == id })
-        stopwatchAdapter.submitList(stopwatches.toList())
+        stopwatchAdapter?.submitList(stopwatches.toList())
     }
 
     private fun changeStopwatch(id: Int, currentMs: Long?, isStarted: Boolean, currentViewState: Long?) {
@@ -78,9 +79,24 @@ class PomodoroFragment: Fragment(), StopwatchListener {
                 newTimers.add(it)
             }
         }
-        stopwatchAdapter.submitList(newTimers)
+        stopwatchAdapter?.submitList(newTimers)
         stopwatches.clear()
         stopwatches.addAll(newTimers) // searched item should to be changed in stopwatches // make new list is redundant
+    }
+
+    @OnLifecycleEvent(Lifecycle.Event.ON_STOP)
+    fun onAppBackgrounded() {
+        val startIntent = Intent(activity, ForegroundService::class.java)
+        startIntent.putExtra(COMMAND_ID, COMMAND_START)
+        startIntent.putExtra(STARTED_TIMER_TIME_MS, startTime)
+        activity?.startService(startIntent)
+    }
+
+    @OnLifecycleEvent(Lifecycle.Event.ON_START)
+    fun onAppForegrounded() {
+        val stopIntent = Intent(activity, ForegroundService::class.java)
+        stopIntent.putExtra(COMMAND_ID, COMMAND_STOP)
+        activity?.startService(stopIntent)
     }
 
     override fun onDestroyView() {
