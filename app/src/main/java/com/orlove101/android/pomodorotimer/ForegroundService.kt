@@ -6,7 +6,10 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.media.Ringtone
+import android.media.RingtoneManager
 import android.os.Build
+import android.os.CountDownTimer
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -16,7 +19,7 @@ class ForegroundService: Service() {
 
     private var isServiceStarted = false
     private var notificationManager: NotificationManager? = null
-    private var job: Job? = null
+    private var countDownTimer: CountDownTimer? = null
 
     private val builder by lazy {
         NotificationCompat.Builder(this, CHANNEL_ID)
@@ -25,7 +28,7 @@ class ForegroundService: Service() {
             .setGroupSummary(false)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(getPendingIntent())
+//            .setContentIntent(getPendingIntent())
             .setSilent(true)
             .setSmallIcon(R.drawable.ic_baseline_access_alarm_24)
     }
@@ -71,17 +74,26 @@ class ForegroundService: Service() {
     }
 
     private fun continueTimer(startTime: Long) {
-        job = GlobalScope.launch(Dispatchers.Main) {
-            while (true) {
+        countDownTimer = object: CountDownTimer(startTime, INTERVAL) {
+
+            override fun onTick(millisUntilFinished: Long) {
                 notificationManager?.notify(
                     NOTIFICATION_ID,
-                    getNotification(
-                        (System.currentTimeMillis() - startTime).displayTime().dropLast(3)
-                    )
+                    getNotification(millisUntilFinished.displayTime())
                 )
-                delay(INTERVAL)
             }
-        }
+
+            override fun onFinish() {
+                notificationManager?.notify(
+                    NOTIFICATION_ID,
+                    getNotification("finished")
+                )
+                RingtoneManager.getRingtone(
+                    applicationContext, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION
+                    )
+                ).play()
+            }
+        }.start()
     }
 
     private fun commandStop() {
@@ -90,7 +102,7 @@ class ForegroundService: Service() {
         }
         Log.i(TAG, "commandStop()")
         try {
-            job?.cancel()
+            countDownTimer?.cancel()
             stopForeground(true)
             stopSelf()
         } finally {

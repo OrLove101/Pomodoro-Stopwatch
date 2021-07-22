@@ -3,6 +3,7 @@ package com.orlove101.android.pomodorotimer
 const val START_TIME = "00:00:00"
 const val UNIT_TEN_S = 1000L
 const val UNIT_TEN_MS = 10L
+
 const val INVALID = "INVALID"
 const val COMMAND_START = "COMMAND_START"
 const val COMMAND_STOP = "COMMAND_STOP"

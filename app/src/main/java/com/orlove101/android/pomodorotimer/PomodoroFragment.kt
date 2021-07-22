@@ -18,9 +18,12 @@ class PomodoroFragment: Fragment(), StopwatchListener, LifecycleObserver {
     private var _binding: PomodoroFragmentBinding? = null
     private val binding get() = _binding!!
 
-    private val stopwatchAdapter = this.activity?.let { StopwatchAdapter(this, it) }
+    private val stopwatchAdapter = StopwatchAdapter(this, lifecycleScope)
     private val stopwatches = mutableListOf<Stopwatch>()
     private var nextId = 0
+
+    private var timersTime = 1000L
+    private var timersId = 0
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -28,16 +31,19 @@ class PomodoroFragment: Fragment(), StopwatchListener, LifecycleObserver {
         savedInstanceState: Bundle?
     ): View {
         _binding = PomodoroFragmentBinding.inflate(inflater, container, false)
+
+        ProcessLifecycleOwner.get().lifecycle.addObserver(this)
+
         return binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
         binding.recycler.apply {
             layoutManager = LinearLayoutManager(context)
             adapter = stopwatchAdapter
         }
+
 
         binding.addNewStopwatchButton.setOnClickListener {
             val minutes = binding.editTextMinutes.text.toString().toLong()
@@ -45,14 +51,16 @@ class PomodoroFragment: Fragment(), StopwatchListener, LifecycleObserver {
 
             if ( minutes > 0 ) {
                 stopwatches.add(Stopwatch(nextId++, milliseconds, false, 0L))
-                stopwatchAdapter?.submitList(stopwatches.toList())
+                stopwatchAdapter.submitList(stopwatches.toList())
             }
         }
     }
 
+    // dummy behaviour when play tapped many times
+
     override fun start(id: Int) {
         stopwatches.forEach { it.isStarted = false }
-        stopwatchAdapter?.notifyDataSetChanged()
+        stopwatchAdapter.notifyDataSetChanged()
         changeStopwatch(id, null, true, null)
     }
 
@@ -60,9 +68,9 @@ class PomodoroFragment: Fragment(), StopwatchListener, LifecycleObserver {
         changeStopwatch(id, currentMs, false, currentViewState)
     }
 
-    override fun delete(id: Int) {
+    override fun delete(id: Int) { // unexpected behaviour during deleting item
         stopwatches.remove(stopwatches.find { it.id == id })
-        stopwatchAdapter?.submitList(stopwatches.toList())
+        stopwatchAdapter.submitList(stopwatches.toList())
     }
 
     private fun changeStopwatch(id: Int, currentMs: Long?, isStarted: Boolean, currentViewState: Long?) {
@@ -74,27 +82,36 @@ class PomodoroFragment: Fragment(), StopwatchListener, LifecycleObserver {
                     currentMs ?: it.currentMs,
                     isStarted,
                     currentViewState ?: it.currentViewState)
-                ) //just change not create
+                )
             } else {
                 newTimers.add(it)
             }
         }
-        stopwatchAdapter?.submitList(newTimers)
+        stopwatchAdapter.submitList(newTimers)
         stopwatches.clear()
-        stopwatches.addAll(newTimers) // searched item should to be changed in stopwatches // make new list is redundant
+        stopwatches.addAll(newTimers)
     }
 
-    @OnLifecycleEvent(Lifecycle.Event.ON_STOP)
-    fun onAppBackgrounded() {
+    @OnLifecycleEvent(Lifecycle.Event.ON_STOP) //TODO fix
+    fun onAppBackground() {
+        for (element in stopwatches) {
+            if (element.isStarted) {
+                timersTime = element.currentMs
+                timersId = element.id
+            }
+        }
         val startIntent = Intent(activity, ForegroundService::class.java)
-        startIntent.putExtra(COMMAND_ID, COMMAND_START)
-        startIntent.putExtra(STARTED_TIMER_TIME_MS, startTime)
+        startIntent.run {
+            putExtra(COMMAND_ID, COMMAND_START)
+            putExtra(STARTED_TIMER_TIME_MS, timersTime)
+            putExtra(ID, timersId)
+        }
         activity?.startService(startIntent)
     }
 
-    @OnLifecycleEvent(Lifecycle.Event.ON_START)
+    @OnLifecycleEvent(Lifecycle.Event.ON_START) //TODO fix
     fun onAppForegrounded() {
-        val stopIntent = Intent(activity, ForegroundService::class.java)
+        val stopIntent = Intent(this.activity, ForegroundService::class.java)
         stopIntent.putExtra(COMMAND_ID, COMMAND_STOP)
         activity?.startService(stopIntent)
     }
@@ -105,6 +122,8 @@ class PomodoroFragment: Fragment(), StopwatchListener, LifecycleObserver {
     }
 
     companion object {
+        const val ID = "id"
+
         fun newInstance(): PomodoroFragment {
             val fragment = PomodoroFragment()
             val args = bundleOf()
