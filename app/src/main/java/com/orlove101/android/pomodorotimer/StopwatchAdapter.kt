@@ -46,13 +46,9 @@ class StopwatchAdapter(
             binding.stopwatchTimer.text = stopwatch.currentMs.displayTime()
 
             if ( stopwatch.isStarted ) {
-                this.setIsRecyclable(false)
                 startTimer(stopwatch)
             } else {
-                if (!this.isRecyclable) {
-                    this.setIsRecyclable(true)
-                    stopTimer(stopwatch)
-                }
+                stopTimer(stopwatch)
             }
 
             initButtonsListeners(stopwatch)
@@ -115,6 +111,7 @@ class StopwatchAdapter(
                     binding.blinkingIndicator.isInvisible = true
                     (binding.blinkingIndicator.background as? AnimationDrawable)?.stop()
                     binding.root.setCardBackgroundColor(Color.RED)
+                    binding.startPauseButton.isEnabled = false
                 }
             }
         }
